@@ -819,7 +819,7 @@ bool fill(const std::vector<Numeric>& x, const std::vector<Numeric>& y, const st
 }
 
 template< typename Numeric >
-bool fill_between(const std::vector<Numeric>& x, const std::vector<Numeric>& y1, const std::vector<Numeric>& y2, const std::map<std::string, std::string>& keywords)
+bool fill_between(const std::vector<Numeric>& x, const std::vector<Numeric>& y1, const std::vector<Numeric>& y2, const std::map<std::string, std::string>& keywords, double alpha)
 {
     assert(x.size() == y1.size());
     assert(x.size() == y2.size());
@@ -842,6 +842,8 @@ bool fill_between(const std::vector<Numeric>& x, const std::vector<Numeric>& y1,
     for(std::map<std::string, std::string>::const_iterator it = keywords.begin(); it != keywords.end(); ++it) {
         PyDict_SetItemString(kwargs, it->first.c_str(), PyUnicode_FromString(it->second.c_str()));
     }
+
+    PyDict_SetItemString(kwargs, "alpha", PyFloat_FromDouble(alpha));
 
     PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_fill_between, args, kwargs);
 
@@ -1156,10 +1158,10 @@ bool scatter(const std::vector<NumericX>& x,
   return res;
 
 }
-
 template<typename Numeric>
 bool boxplot(const std::vector<std::vector<Numeric>>& data,
              const std::vector<std::string>& labels = {},
+             bool show_fliers = true,
              const std::map<std::string, std::string> & keywords = {})
 {
     detail::_interpreter::get();
@@ -1170,15 +1172,53 @@ bool boxplot(const std::vector<std::vector<Numeric>>& data,
 
     PyObject* kwargs = PyDict_New();
 
-    // kwargs needs the labels, if there are (the correct number of) labels
+    // labels
     if (!labels.empty() && labels.size() == data.size()) {
         PyDict_SetItemString(kwargs, "labels", detail::get_array(labels));
     }
 
-    // take care of the remaining keywords
+    PyDict_SetItemString(kwargs, "showfliers", PyBool_FromLong(show_fliers));
+
+    // === Вкладені ключі: підтримка boxprops.linewidth і т.д. ===
+    std::map<std::string, PyObject*> nestedDicts;
+
     for (const auto& it : keywords)
     {
-        PyDict_SetItemString(kwargs, it.first.c_str(), PyString_FromString(it.second.c_str()));
+        auto pos = it.first.find('.');
+        if (pos != std::string::npos) {
+            // Вкладений ключ
+            std::string outerKey = it.first.substr(0, pos);
+            std::string innerKey = it.first.substr(pos + 1);
+
+            PyObject* innerDict;
+            if (nestedDicts.count(outerKey)) {
+                innerDict = nestedDicts[outerKey];
+            } else {
+                innerDict = PyDict_New();
+                nestedDicts[outerKey] = innerDict;
+            }
+
+            // значення: float або string
+            try {
+                double val = std::stod(it.second);
+                PyDict_SetItemString(innerDict, innerKey.c_str(), PyFloat_FromDouble(val));
+            } catch (...) {
+                PyDict_SetItemString(innerDict, innerKey.c_str(), PyUnicode_FromString(it.second.c_str()));
+            }
+        } else {
+            // Звичайний ключ
+            try {
+                double val = std::stod(it.second);
+                PyDict_SetItemString(kwargs, it.first.c_str(), PyFloat_FromDouble(val));
+            } catch (...) {
+                PyDict_SetItemString(kwargs, it.first.c_str(), PyUnicode_FromString(it.second.c_str()));
+            }
+        }
+    }
+
+    // Додати вкладені словники у kwargs
+    for (const auto& kv : nestedDicts) {
+        PyDict_SetItemString(kwargs, kv.first.c_str(), kv.second);
     }
 
     PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_boxplot, args, kwargs);
@@ -1186,31 +1226,8 @@ bool boxplot(const std::vector<std::vector<Numeric>>& data,
     Py_DECREF(args);
     Py_DECREF(kwargs);
 
-    if(res) Py_DECREF(res);
-
-    return res;
-}
-
-template<typename Numeric>
-bool boxplot(const std::vector<Numeric>& data,
-             const std::map<std::string, std::string> & keywords = {})
-{
-    detail::_interpreter::get();
-
-    PyObject* vector = detail::get_array(data);
-    PyObject* args = PyTuple_New(1);
-    PyTuple_SetItem(args, 0, vector);
-
-    PyObject* kwargs = PyDict_New();
-    for (const auto& it : keywords)
-    {
-        PyDict_SetItemString(kwargs, it.first.c_str(), PyString_FromString(it.second.c_str()));
-    }
-
-    PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_boxplot, args, kwargs);
-
-    Py_DECREF(args);
-    Py_DECREF(kwargs);
+    for (const auto& kv : nestedDicts)
+        Py_DECREF(kv.second);
 
     if(res) Py_DECREF(res);
 
@@ -1223,6 +1240,7 @@ bool bar(const std::vector<Numeric> &               x,
          std::string                                ec       = "black",
          std::string                                ls       = "-",
          double                                     lw       = 1.0,
+         double  w = 1.0,
          const std::map<std::string, std::string> & keywords = {})
 {
   detail::_interpreter::get();
@@ -1235,6 +1253,7 @@ bool bar(const std::vector<Numeric> &               x,
   PyDict_SetItemString(kwargs, "ec", PyString_FromString(ec.c_str()));
   PyDict_SetItemString(kwargs, "ls", PyString_FromString(ls.c_str()));
   PyDict_SetItemString(kwargs, "lw", PyFloat_FromDouble(lw));
+  PyDict_SetItemString(kwargs, "width", PyFloat_FromDouble(w));
 
   for (std::map<std::string, std::string>::const_iterator it =
          keywords.begin();
@@ -1635,11 +1654,14 @@ bool loglog(const std::vector<NumericX>& x, const std::vector<NumericY>& y, cons
 
     return res;
 }
-
 template<typename NumericX, typename NumericY>
-bool errorbar(const std::vector<NumericX> &x, const std::vector<NumericY> &y, const std::vector<NumericX> &yerr, const std::map<std::string, std::string> &keywords = {})
+bool errorbar(const std::vector<NumericX>& x,
+              const std::vector<NumericY>& y,
+              const std::vector<NumericX>& yerr,
+              const std::map<std::string, std::string>& keywords = {})
 {
     assert(x.size() == y.size());
+    assert(y.size() == yerr.size());
 
     detail::_interpreter::get();
 
@@ -1647,31 +1669,47 @@ bool errorbar(const std::vector<NumericX> &x, const std::vector<NumericY> &y, co
     PyObject* yarray = detail::get_array(y);
     PyObject* yerrarray = detail::get_array(yerr);
 
-    // construct keyword args
     PyObject* kwargs = PyDict_New();
-    for(std::map<std::string, std::string>::const_iterator it = keywords.begin(); it != keywords.end(); ++it)
+
+    // Add 'yerr' explicitly
+    PyDict_SetItemString(kwargs, "yerr", yerrarray);
+    Py_DECREF(yerrarray); // DECREF after inserting into kwargs
+
+    // Add user-defined keyword arguments
+    for (const auto& it : keywords)
     {
-        PyDict_SetItemString(kwargs, it->first.c_str(), PyString_FromString(it->second.c_str()));
+        const std::string& key = it.first;
+        const std::string& val = it.second;
+
+        try {
+            double num_val = std::stod(val);
+            PyDict_SetItemString(kwargs, key.c_str(), PyFloat_FromDouble(num_val));
+        } catch (...) {
+            PyDict_SetItemString(kwargs, key.c_str(), PyUnicode_FromString(val.c_str()));
+        }
     }
 
-    PyDict_SetItemString(kwargs, "yerr", yerrarray);
+    // Build argument tuple (x, y)
+    PyObject* args = PyTuple_New(2);
+    PyTuple_SetItem(args, 0, xarray);  // steals reference
+    PyTuple_SetItem(args, 1, yarray);  // steals reference
 
-    PyObject *plot_args = PyTuple_New(2);
-    PyTuple_SetItem(plot_args, 0, xarray);
-    PyTuple_SetItem(plot_args, 1, yarray);
+    // Call matplotlib.pyplot.errorbar(x, y, yerr=...)
+    PyObject* res = PyObject_Call(
+        detail::_interpreter::get().s_python_function_errorbar,
+        args, kwargs
+        );
 
-    PyObject *res = PyObject_Call(detail::_interpreter::get().s_python_function_errorbar, plot_args, kwargs);
-
+    // Cleanup
+    Py_DECREF(args);
     Py_DECREF(kwargs);
-    Py_DECREF(plot_args);
 
-    if (res)
-        Py_DECREF(res);
-    else
-        throw std::runtime_error("Call to errorbar() failed.");
-
-    return res;
+    bool success = res != nullptr;
+    if (res) Py_DECREF(res);
+    return success;
 }
+
+
 
 template<typename Numeric>
 bool named_plot(const std::string& name, const std::vector<Numeric>& y, const std::string& format = "")
@@ -1831,19 +1869,26 @@ bool stem(const std::vector<Numeric>& y, const std::string& format = "")
 }
 
 template<typename Numeric>
-void text(Numeric x, Numeric y, const std::string& s = "")
+void text(Numeric x, Numeric y, const std::string& s,
+          const std::map<std::string, std::string>& keywords = {})
 {
     detail::_interpreter::get();
+
+    PyObject* kwargs = PyDict_New();
+    for (const auto& kv : keywords) {
+        PyDict_SetItemString(kwargs, kv.first.c_str(), PyUnicode_FromString(kv.second.c_str()));
+    }
 
     PyObject* args = PyTuple_New(3);
     PyTuple_SetItem(args, 0, PyFloat_FromDouble(x));
     PyTuple_SetItem(args, 1, PyFloat_FromDouble(y));
-    PyTuple_SetItem(args, 2, PyString_FromString(s.c_str()));
+    PyTuple_SetItem(args, 2, PyUnicode_FromString(s.c_str()));
 
-    PyObject* res = PyObject_CallObject(detail::_interpreter::get().s_python_function_text, args);
-    if(!res) throw std::runtime_error("Call to text() failed.");
+    PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_text, args, kwargs);
+    if (!res) throw std::runtime_error("Call to text() with kwargs failed.");
 
     Py_DECREF(args);
+    Py_DECREF(kwargs);
     Py_DECREF(res);
 }
 
@@ -1871,6 +1916,42 @@ inline void colorbar(PyObject* mappable = NULL, const std::map<std::string, floa
     Py_DECREF(res);
 }
 
+inline PyObject* imshow(const std::vector<std::vector<double>>& Z,
+                        const std::map<std::string, std::string>& keywords = {})
+{
+    detail::_interpreter::get();
+
+    // Перетворюємо std::vector в Python array
+    const size_t rows = Z.size();
+    const size_t cols = rows > 0 ? Z[0].size() : 0;
+
+    // Формуємо внутрішній масив
+    npy_intp dims[2] = { static_cast<npy_intp>(rows), static_cast<npy_intp>(cols) };
+    PyObject* array = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
+
+    double* data = static_cast<double*>(PyArray_DATA((PyArrayObject*)array));
+
+    for (size_t i = 0; i < rows; ++i)
+        for (size_t j = 0; j < cols; ++j)
+            data[i * cols + j] = Z[i][j];
+
+    // Викликаємо imshow
+    PyObject* args = PyTuple_New(1);
+    PyTuple_SetItem(args, 0, array);
+
+    PyObject* kwargs = PyDict_New();
+    for (const auto& kv : keywords)
+        PyDict_SetItemString(kwargs, kv.first.c_str(), PyUnicode_FromString(kv.second.c_str()));
+
+    PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_imshow, args, kwargs);
+    if (!res)
+        throw std::runtime_error("Call to imshow() failed.");
+
+    Py_DECREF(args);
+    Py_DECREF(kwargs);
+
+    return res; // Потрібно передати в colorbar()
+}
 
 inline long figure(long number = -1)
 {

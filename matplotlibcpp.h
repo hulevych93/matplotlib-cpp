@@ -277,10 +277,8 @@ private:
         s_python_function_colorbar = PyObject_GetAttrString(pymod, "colorbar");
         s_python_function_subplots_adjust = safe_import(pymod,"subplots_adjust");
         s_python_function_rcparams = PyObject_GetAttrString(pymod, "rcParams");
-	s_python_function_spy = PyObject_GetAttrString(pymod, "spy");
-#ifndef WITHOUT_NUMPY
+        s_python_function_spy = PyObject_GetAttrString(pymod, "spy");
         s_python_function_imshow = safe_import(pymod, "imshow");
-#endif
         s_python_empty_tuple = PyTuple_New(0);
     }
 
@@ -1883,6 +1881,46 @@ void text(Numeric x, Numeric y, const std::string& s,
     Py_DECREF(args);
     Py_DECREF(kwargs);
     Py_DECREF(res);
+}
+
+inline PyObject* imshow_pylist(const std::vector<std::vector<double>>& Z,
+                               const std::map<std::string, std::string>& keywords = {}) {
+    detail::_interpreter::get();
+
+    const size_t rows = Z.size();
+    const size_t cols = rows > 0 ? Z[0].size() : 0;
+
+    PyObject* outerList = PyList_New(rows);
+    for (size_t i = 0; i < rows; ++i) {
+        PyObject* innerList = PyList_New(cols);
+        for (size_t j = 0; j < cols; ++j) {
+            PyObject* value = PyFloat_FromDouble(Z[i][j]);
+            PyList_SetItem(innerList, j, value);  // steals reference
+        }
+        PyList_SetItem(outerList, i, innerList);  // steals reference
+    }
+
+    PyObject* args = PyTuple_New(1);
+    PyTuple_SetItem(args, 0, outerList);  // steals reference
+
+    PyObject* kwargs = PyDict_New();
+    for (const auto& kv : keywords) {
+        PyDict_SetItemString(kwargs, kv.first.c_str(),
+                             PyUnicode_FromString(kv.second.c_str()));
+    }
+
+    PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_imshow,
+                                  args, kwargs);
+
+    if (!res) {
+        PyErr_Print();
+        throw std::runtime_error("Call to imshow_pylist() failed.");
+    }
+
+    Py_DECREF(args);
+    Py_DECREF(kwargs);
+
+    return res;
 }
 
 inline void colorbar(PyObject* mappable = NULL, const std::map<std::string, float>& keywords = {})

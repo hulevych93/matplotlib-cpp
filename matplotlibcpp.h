@@ -1909,43 +1909,6 @@ inline void colorbar(PyObject* mappable = NULL, const std::map<std::string, floa
     Py_DECREF(res);
 }
 
-inline PyObject* imshow(const std::vector<std::vector<double>>& Z,
-                        const std::map<std::string, std::string>& keywords = {})
-{
-    detail::_interpreter::get();
-
-    // Перетворюємо std::vector в Python array
-    const size_t rows = Z.size();
-    const size_t cols = rows > 0 ? Z[0].size() : 0;
-
-    // Формуємо внутрішній масив
-    npy_intp dims[2] = { static_cast<npy_intp>(rows), static_cast<npy_intp>(cols) };
-    PyObject* array = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
-
-    double* data = static_cast<double*>(PyArray_DATA((PyArrayObject*)array));
-
-    for (size_t i = 0; i < rows; ++i)
-        for (size_t j = 0; j < cols; ++j)
-            data[i * cols + j] = Z[i][j];
-
-    // Викликаємо imshow
-    PyObject* args = PyTuple_New(1);
-    PyTuple_SetItem(args, 0, array);
-
-    PyObject* kwargs = PyDict_New();
-    for (const auto& kv : keywords)
-        PyDict_SetItemString(kwargs, kv.first.c_str(), PyUnicode_FromString(kv.second.c_str()));
-
-    PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_imshow, args, kwargs);
-    if (!res)
-        throw std::runtime_error("Call to imshow() failed.");
-
-    Py_DECREF(args);
-    Py_DECREF(kwargs);
-
-    return res; // Потрібно передати в colorbar()
-}
-
 inline long figure(long number = -1)
 {
     detail::_interpreter::get();

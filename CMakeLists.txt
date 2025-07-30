@@ -5,14 +5,6 @@ include(GNUInstallDirs)
 set(PACKAGE_NAME matplotlib_cpp)
 set(INSTALL_CONFIGDIR ${CMAKE_INSTALL_LIBDIR}/${PACKAGE_NAME}/cmake)
 
-# Try to find Python 3.11 first
-find_program(PYTHON3_11_EXECUTABLE NAMES python3.11)
-
-if(PYTHON3_11_EXECUTABLE)
-        message(STATUS "Using Python 3.11: ${PYTHON3_11_EXECUTABLE}")
-        set(Python3_EXECUTABLE ${PYTHON3_11_EXECUTABLE} CACHE FILEPATH "Use Python 3.11 if available")
-    endif()
-
 # Library target
 add_library(matplotlib_cpp INTERFACE)
 target_include_directories(matplotlib_cpp

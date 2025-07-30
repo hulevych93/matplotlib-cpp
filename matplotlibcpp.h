@@ -348,13 +348,6 @@ template <> struct select_npy_type<uint16_t> { const static NPY_TYPES type = NPY
 template <> struct select_npy_type<uint32_t> { const static NPY_TYPES type = NPY_ULONG; };
 template <> struct select_npy_type<uint64_t> { const static NPY_TYPES type = NPY_UINT64; };
 
-// Sanity checks; comment them out or change the numpy type below if you're compiling on
-// a platform where they don't apply
-static_assert(sizeof(long long) == 8);
-template <> struct select_npy_type<long long> { const static NPY_TYPES type = NPY_INT64; };
-static_assert(sizeof(unsigned long long) == 8);
-template <> struct select_npy_type<unsigned long long> { const static NPY_TYPES type = NPY_UINT64; };
-
 template<typename Numeric>
 PyObject* get_array(const std::vector<Numeric>& v)
 {
@@ -1291,7 +1284,7 @@ bool bar(const std::vector<Numeric> &               y,
   std::vector<T> x;
   for (std::size_t i = 0; i < y.size(); i++) { x.push_back(i); }
 
-  return bar(x, y, ec, ls, lw, keywords);
+  return bar(x, y, ec, ls, lw, 1.0, keywords);
 }
 
 

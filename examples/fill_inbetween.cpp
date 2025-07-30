@@ -23,6 +23,6 @@ int main() {
   keywords["color"] = "grey";
   keywords["hatch"] = "-";
 
-  plt::fill_between(x, y, z, keywords);
+  plt::fill_between(x, y, z, keywords, 0.2);
   plt::show();
 }

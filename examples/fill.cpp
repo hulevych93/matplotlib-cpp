@@ -29,7 +29,7 @@ int main() {
         x1.insert(x1.end(), x2.rbegin(), x2.rend());
         y1.insert(y1.end(), y2.rbegin(), y2.rend());
 
-        plt::fill(x1, y1, {});
+        plt::fill(x1, y1, {}, 0.5);
     }
     plt::show();
 }

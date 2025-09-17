@@ -778,7 +778,7 @@ bool stem(const std::vector<Numeric> &x, const std::vector<Numeric> &y, const st
 }
 
 template< typename Numeric >
-bool fill(const std::vector<Numeric>& x, const std::vector<Numeric>& y, const std::map<std::string, std::string>& keywords)
+bool fill(const std::vector<Numeric>& x, const std::vector<Numeric>& y, const std::map<std::string, std::string>& keywords, double alpha)
 {
     assert(x.size() == y.size());
 
@@ -798,6 +798,8 @@ bool fill(const std::vector<Numeric>& x, const std::vector<Numeric>& y, const st
     for (auto it = keywords.begin(); it != keywords.end(); ++it) {
         PyDict_SetItemString(kwargs, it->first.c_str(), PyUnicode_FromString(it->second.c_str()));
     }
+
+    PyDict_SetItemString(kwargs, "alpha", PyFloat_FromDouble(alpha));
 
     PyObject* res = PyObject_Call(detail::_interpreter::get().s_python_function_fill, args, kwargs);
 
@@ -1149,9 +1151,11 @@ bool scatter(const std::vector<NumericX>& x,
   return res;
 
 }
+
 template<typename Numeric>
 bool boxplot(const std::vector<std::vector<Numeric>>& data,
              const std::vector<std::string>& labels = {},
+             const std::vector<double>& positions = {},
              bool show_fliers = true,
              const std::map<std::string, std::string> & keywords = {})
 {
@@ -1166,6 +1170,15 @@ bool boxplot(const std::vector<std::vector<Numeric>>& data,
     // labels
     if (!labels.empty() && labels.size() == data.size()) {
         PyDict_SetItemString(kwargs, "labels", detail::get_array(labels));
+    }
+
+    if (!positions.empty()) {
+        PyObject* posList = PyList_New(positions.size());
+        for (size_t i = 0; i < positions.size(); ++i) {
+            PyList_SetItem(posList, i, PyFloat_FromDouble(positions[i]));
+        }
+        PyDict_SetItemString(kwargs, "positions", posList);
+        Py_DECREF(posList);
     }
 
     PyDict_SetItemString(kwargs, "showfliers", PyBool_FromLong(show_fliers));
@@ -2042,6 +2055,35 @@ inline void legend(const std::map<std::string, std::string>& keywords)
 
   Py_DECREF(kwargs);
   Py_DECREF(res);
+}
+
+inline void legend(const std::map<std::string, std::string>& keywords,
+                   const std::vector<double>& bbox)
+{
+    detail::_interpreter::get();
+
+    PyObject* kwargs = PyDict_New();
+    for (auto& it : keywords) {
+        PyDict_SetItemString(kwargs, it.first.c_str(),
+                             PyUnicode_FromString(it.second.c_str()));
+    }
+
+    // перетворюємо vector<double> -> Python tuple
+    PyObject* bboxTuple = PyTuple_New(bbox.size());
+    for (size_t i = 0; i < bbox.size(); ++i) {
+        PyTuple_SetItem(bboxTuple, i, PyFloat_FromDouble(bbox[i]));
+    }
+    PyDict_SetItemString(kwargs, "bbox_to_anchor", bboxTuple);
+    Py_DECREF(bboxTuple);
+
+    PyObject* res = PyObject_Call(
+        detail::_interpreter::get().s_python_function_legend,
+        detail::_interpreter::get().s_python_empty_tuple, kwargs);
+
+    if (!res) throw std::runtime_error("Call to legend() failed.");
+
+    Py_DECREF(kwargs);
+    Py_DECREF(res);
 }
 
 template<typename Numeric>
